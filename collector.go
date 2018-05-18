@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"sync"
 	"time"
@@ -37,15 +38,16 @@ type teamsCollector struct {
 	lastSync         time.Time
 	client           *tsuru.APIClient
 	apps             []tsuru.MiniApp
-	serviceInstances []serviceInstanceData
+	serviceInstances map[string]serviceInstanceData
 }
 
 func newTeamsCollector(conf config, client *tsuru.APIClient) (*teamsCollector, error) {
 	collector := &teamsCollector{
-		client:        client,
-		config:        conf,
-		syncRunning:   make(chan struct{}, 1),
-		requestsLimit: make(chan struct{}, conf.maxRequests),
+		client:           client,
+		config:           conf,
+		syncRunning:      make(chan struct{}, 1),
+		requestsLimit:    make(chan struct{}, conf.maxRequests),
+		serviceInstances: make(map[string]serviceInstanceData),
 	}
 	return collector, prometheus.Register(collector)
 }
@@ -53,6 +55,10 @@ func newTeamsCollector(conf config, client *tsuru.APIClient) (*teamsCollector, e
 func (p *teamsCollector) fetchApps() ([]tsuru.MiniApp, error) {
 	apps, _, err := p.client.AppApi.AppList(context.TODO(), nil)
 	return apps, err
+}
+
+func serviceKey(s, si string) string {
+	return fmt.Sprintf("%s|%s", s, si)
 }
 
 func (p *teamsCollector) sync() {
@@ -76,7 +82,6 @@ func (p *teamsCollector) sync() {
 		log.Printf("unable to fetch service instance list: %v", err)
 		return
 	}
-	var siList []serviceInstanceData
 	wg := sync.WaitGroup{}
 	for _, svc := range svcs {
 		for _, instance := range svc.Instances {
@@ -84,28 +89,17 @@ func (p *teamsCollector) sync() {
 				serviceName:         svc.Service,
 				serviceInstanceName: instance,
 			}
-			siList = append(siList, si)
-			p.getServiceInstance(&wg, &siList[len(siList)-1])
+			p.getServiceInstance(&wg, si)
 		}
 	}
 	wg.Wait()
-	for i := 0; i < len(siList); i++ {
-		if siList[i].ServiceInstanceInfo.Teamowner == "" {
-			siList[i] = siList[len(siList)-1]
-			siList = siList[:len(siList)-1]
-			i--
-		}
-	}
-	p.Lock()
-	p.serviceInstances = siList
-	p.Unlock()
 }
 
-func (p *teamsCollector) getServiceInstance(wg *sync.WaitGroup, si *serviceInstanceData) {
+func (p *teamsCollector) getServiceInstance(wg *sync.WaitGroup, si serviceInstanceData) {
 	wg.Add(1)
+	p.requestsLimit <- struct{}{}
 	go func() {
 		defer wg.Done()
-		p.requestsLimit <- struct{}{}
 		defer func() { <-p.requestsLimit }()
 		log.Printf("[sync] getting service instance %v - %v", si.serviceName, si.serviceInstanceName)
 		siInfo, _, err := p.client.ServiceApi.InstanceGet(context.TODO(), si.serviceName, si.serviceInstanceName)
@@ -114,6 +108,9 @@ func (p *teamsCollector) getServiceInstance(wg *sync.WaitGroup, si *serviceInsta
 			return
 		}
 		si.ServiceInstanceInfo = siInfo
+		p.Lock()
+		p.serviceInstances[serviceKey(si.serviceName, si.serviceInstanceName)] = si
+		p.Unlock()
 	}()
 }
 
