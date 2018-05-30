@@ -12,8 +12,8 @@ import (
 )
 
 const (
-	defaultSyncInterval = 10 * time.Minute
-	defaultMaxRequests  = 50
+	defaultSyncInterval = 15 * time.Minute
+	defaultMaxRequests  = 10
 )
 
 var (
