@@ -69,11 +69,15 @@ func (p *teamsCollector) sync() {
 		log.Printf("unable to fetch service instance list: %v", err)
 		return
 	}
+	newSvcs := make([]tsuru.ServiceInstance, 0, len(p.serviceInstances))
 	for _, svc := range svcs {
 		for _, si := range svc.ServiceInstances {
-			p.serviceInstances = append(p.serviceInstances, si)
+			newSvcs = append(newSvcs, si)
 		}
 	}
+	p.Lock()
+	p.serviceInstances = newSvcs
+	p.Unlock()
 }
 
 func (p *teamsCollector) checkSync() {
