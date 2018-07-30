@@ -27,9 +27,6 @@ func readConfig() (config, error) {
 	if conf.syncInterval == 0 {
 		conf.syncInterval = defaultSyncInterval
 	}
-	if conf.maxRequests == 0 {
-		conf.maxRequests = defaultMaxRequests
-	}
 	if conf.port == "" {
 		conf.port = "19283"
 	}

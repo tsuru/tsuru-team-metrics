@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"sync"
 	"time"
@@ -12,8 +11,7 @@ import (
 )
 
 const (
-	defaultSyncInterval = 15 * time.Minute
-	defaultMaxRequests  = 10
+	defaultSyncInterval = 5 * time.Minute
 )
 
 var (
@@ -22,12 +20,6 @@ var (
 	appMetadataDesc             = prometheus.NewDesc("tsuru_app_metadata", "tsuru app metadata.", labelsApp, nil)
 	serviceInstanceMetadataDesc = prometheus.NewDesc("tsuru_service_instance_metadata", "tsuru service instance metadata.", labelsService, nil)
 )
-
-type serviceInstanceData struct {
-	tsuru.ServiceInstanceInfo
-	serviceName         string
-	serviceInstanceName string
-}
 
 type teamsCollector struct {
 	sync.RWMutex
@@ -38,16 +30,15 @@ type teamsCollector struct {
 	lastSync         time.Time
 	client           *tsuru.APIClient
 	apps             []tsuru.MiniApp
-	serviceInstances map[string]serviceInstanceData
+	serviceInstances []tsuru.ServiceInstance
 }
 
 func newTeamsCollector(conf config, client *tsuru.APIClient) (*teamsCollector, error) {
 	collector := &teamsCollector{
-		client:           client,
-		config:           conf,
-		syncRunning:      make(chan struct{}, 1),
-		requestsLimit:    make(chan struct{}, conf.maxRequests),
-		serviceInstances: make(map[string]serviceInstanceData),
+		client:        client,
+		config:        conf,
+		syncRunning:   make(chan struct{}, 1),
+		requestsLimit: make(chan struct{}, conf.maxRequests),
 	}
 	return collector, prometheus.Register(collector)
 }
@@ -55,10 +46,6 @@ func newTeamsCollector(conf config, client *tsuru.APIClient) (*teamsCollector, e
 func (p *teamsCollector) fetchApps() ([]tsuru.MiniApp, error) {
 	apps, _, err := p.client.AppApi.AppList(context.TODO(), nil)
 	return apps, err
-}
-
-func serviceKey(s, si string) string {
-	return fmt.Sprintf("%s|%s", s, si)
 }
 
 func (p *teamsCollector) sync() {
@@ -82,36 +69,11 @@ func (p *teamsCollector) sync() {
 		log.Printf("unable to fetch service instance list: %v", err)
 		return
 	}
-	wg := sync.WaitGroup{}
 	for _, svc := range svcs {
-		for _, instance := range svc.Instances {
-			si := serviceInstanceData{
-				serviceName:         svc.Service,
-				serviceInstanceName: instance,
-			}
-			p.getServiceInstance(&wg, si)
+		for _, si := range svc.ServiceInstances {
+			p.serviceInstances = append(p.serviceInstances, si)
 		}
 	}
-	wg.Wait()
-}
-
-func (p *teamsCollector) getServiceInstance(wg *sync.WaitGroup, si serviceInstanceData) {
-	wg.Add(1)
-	p.requestsLimit <- struct{}{}
-	go func() {
-		defer wg.Done()
-		defer func() { <-p.requestsLimit }()
-		log.Printf("[sync] getting service instance %v - %v", si.serviceName, si.serviceInstanceName)
-		siInfo, _, err := p.client.ServiceApi.InstanceGet(context.TODO(), si.serviceName, si.serviceInstanceName)
-		if err != nil {
-			log.Printf("[sync] unable to fetch service instance info for %q - %q: %v", si.serviceName, si.serviceInstanceName, err)
-			return
-		}
-		si.ServiceInstanceInfo = siInfo
-		p.Lock()
-		p.serviceInstances[serviceKey(si.serviceName, si.serviceInstanceName)] = si
-		p.Unlock()
-	}()
 }
 
 func (p *teamsCollector) checkSync() {
@@ -146,6 +108,6 @@ func (p *teamsCollector) Collect(ch chan<- prometheus.Metric) {
 		ch <- prometheus.MustNewConstMetric(appMetadataDesc, prometheus.GaugeValue, 1.0, a.Name, a.TeamOwner)
 	}
 	for _, si := range p.serviceInstances {
-		ch <- prometheus.MustNewConstMetric(serviceInstanceMetadataDesc, prometheus.GaugeValue, 1.0, si.serviceName, si.serviceInstanceName, si.Teamowner)
+		ch <- prometheus.MustNewConstMetric(serviceInstanceMetadataDesc, prometheus.GaugeValue, 1.0, si.ServiceName, si.Name, si.TeamOwner)
 	}
 }
