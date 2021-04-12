@@ -15,7 +15,7 @@ const (
 )
 
 var (
-	labelsApp                   = []string{"app", "team_owner", "pool"}
+	labelsApp                   = []string{"app", "team_owner", "pool", "plan"}
 	labelsService               = []string{"service", "service_instance", "team_owner", "pool"}
 	appMetadataDesc             = prometheus.NewDesc("tsuru_app_metadata", "tsuru app metadata.", labelsApp, nil)
 	serviceInstanceMetadataDesc = prometheus.NewDesc("tsuru_service_instance_metadata", "tsuru service instance metadata.", labelsService, nil)
@@ -109,7 +109,7 @@ func (p *teamsCollector) Collect(ch chan<- prometheus.Metric) {
 	defer p.RUnlock()
 	p.checkSync()
 	for _, a := range p.apps {
-		ch <- prometheus.MustNewConstMetric(appMetadataDesc, prometheus.GaugeValue, 1.0, a.Name, a.TeamOwner, a.Pool)
+		ch <- prometheus.MustNewConstMetric(appMetadataDesc, prometheus.GaugeValue, 1.0, a.Name, a.TeamOwner, a.Pool, a.Plan.Name)
 	}
 	for _, si := range p.serviceInstances {
 		ch <- prometheus.MustNewConstMetric(serviceInstanceMetadataDesc, prometheus.GaugeValue, 1.0, si.ServiceName, si.Name, si.TeamOwner, si.Pool)
