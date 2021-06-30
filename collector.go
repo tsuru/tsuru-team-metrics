@@ -15,9 +15,11 @@ const (
 )
 
 var (
-	labelsApp                   = []string{"app", "team_owner", "pool", "plan"}
+	labelsAppMetadata           = []string{"app", "team_owner", "pool", "plan"}
+	labelsAppAddress            = []string{"app", "router", "address"}
 	labelsService               = []string{"service", "service_instance", "team_owner", "pool"}
-	appMetadataDesc             = prometheus.NewDesc("tsuru_app_metadata", "tsuru app metadata.", labelsApp, nil)
+	appMetadataDesc             = prometheus.NewDesc("tsuru_app_metadata", "tsuru app metadata.", labelsAppMetadata, nil)
+	appAddressesDesc            = prometheus.NewDesc("tsuru_app_address", "tsuru app address.", labelsAppAddress, nil)
 	serviceInstanceMetadataDesc = prometheus.NewDesc("tsuru_service_instance_metadata", "tsuru service instance metadata.", labelsService, nil)
 )
 
@@ -101,6 +103,7 @@ func (p *teamsCollector) checkSync() {
 
 func (p *teamsCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- appMetadataDesc
+	ch <- appAddressesDesc
 	ch <- serviceInstanceMetadataDesc
 }
 
@@ -111,7 +114,25 @@ func (p *teamsCollector) Collect(ch chan<- prometheus.Metric) {
 	for _, a := range p.apps {
 		ch <- prometheus.MustNewConstMetric(appMetadataDesc, prometheus.GaugeValue, 1.0, a.Name, a.TeamOwner, a.Pool, a.Plan.Name)
 	}
+
+	routersAlreadySent := map[sentRouterAddress]bool{}
+	for _, a := range p.apps {
+		for _, router := range a.Routers {
+			key := sentRouterAddress{a.Name, router.Name, router.Address}
+			if routersAlreadySent[key] {
+				continue
+			}
+			ch <- prometheus.MustNewConstMetric(appAddressesDesc, prometheus.GaugeValue, 1.0, a.Name, router.Name, router.Address)
+			routersAlreadySent[key] = true
+		}
+	}
 	for _, si := range p.serviceInstances {
 		ch <- prometheus.MustNewConstMetric(serviceInstanceMetadataDesc, prometheus.GaugeValue, 1.0, si.ServiceName, si.Name, si.TeamOwner, si.Pool)
 	}
+}
+
+type sentRouterAddress struct {
+	app     string
+	router  string
+	address string
 }
