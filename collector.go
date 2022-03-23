@@ -15,11 +15,14 @@ const (
 )
 
 var (
-	labelsAppMetadata           = []string{"app", "team_owner", "pool", "plan"}
-	labelsAppAddress            = []string{"app", "router", "address"}
-	labelsService               = []string{"service", "service_instance", "team_owner", "pool", "plan"}
-	appMetadataDesc             = prometheus.NewDesc("tsuru_app_metadata", "tsuru app metadata.", labelsAppMetadata, nil)
-	appAddressesDesc            = prometheus.NewDesc("tsuru_app_address", "tsuru app address.", labelsAppAddress, nil)
+	labelsApp         = []string{"app"}
+	labelsAppMetadata = []string{"app", "team_owner", "pool", "plan"}
+	labelsAppAddress  = []string{"app", "router", "address"}
+	labelsService     = []string{"service", "service_instance", "team_owner", "pool", "plan"}
+	appMetadataDesc   = prometheus.NewDesc("tsuru_app_metadata", "tsuru app metadata.", labelsAppMetadata, nil)
+	appAddressesDesc  = prometheus.NewDesc("tsuru_app_address", "tsuru app address.", labelsAppAddress, nil)
+	appUnitsDesc      = prometheus.NewDesc("tsuru_app_units_total", "tsuru app units.", labelsApp, nil)
+
 	serviceInstanceMetadataDesc = prometheus.NewDesc("tsuru_service_instance_metadata", "tsuru service instance metadata.", labelsService, nil)
 )
 
@@ -43,11 +46,6 @@ func newTeamsCollector(conf config, client *tsuru.APIClient) (*teamsCollector, e
 		requestsLimit: make(chan struct{}, conf.maxRequests),
 	}
 	return collector, prometheus.Register(collector)
-}
-
-func (p *teamsCollector) fetchApps() ([]tsuru.MiniApp, error) {
-	apps, _, err := p.client.AppApi.AppList(context.TODO(), nil)
-	return apps, err
 }
 
 func (p *teamsCollector) sync() {
@@ -105,6 +103,7 @@ func (p *teamsCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- appMetadataDesc
 	ch <- appAddressesDesc
 	ch <- serviceInstanceMetadataDesc
+	ch <- appUnitsDesc
 }
 
 func (p *teamsCollector) Collect(ch chan<- prometheus.Metric) {
@@ -128,6 +127,11 @@ func (p *teamsCollector) Collect(ch chan<- prometheus.Metric) {
 	}
 	for _, si := range p.serviceInstances {
 		ch <- prometheus.MustNewConstMetric(serviceInstanceMetadataDesc, prometheus.GaugeValue, 1.0, si.ServiceName, si.Name, si.TeamOwner, si.Pool, si.PlanName)
+	}
+
+	for _, a := range p.apps {
+		nUnits := len(a.Units)
+		ch <- prometheus.MustNewConstMetric(appUnitsDesc, prometheus.GaugeValue, float64(nUnits), a.Name)
 	}
 }
 
