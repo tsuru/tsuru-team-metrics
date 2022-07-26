@@ -19,11 +19,13 @@ var (
 	labelsAppMetadata = []string{"app", "team_owner", "pool", "plan"}
 	labelsAppAddress  = []string{"app", "router", "address"}
 	labelsService     = []string{"service", "service_instance", "team_owner", "pool", "plan"}
+	serviceBindLabels = []string{"service", "service_instance", "app"}
 	appMetadataDesc   = prometheus.NewDesc("tsuru_app_metadata", "tsuru app metadata.", labelsAppMetadata, nil)
 	appAddressesDesc  = prometheus.NewDesc("tsuru_app_address", "tsuru app address.", labelsAppAddress, nil)
 	appUnitsDesc      = prometheus.NewDesc("tsuru_app_units_total", "tsuru app units.", labelsApp, nil)
 
 	serviceInstanceMetadataDesc = prometheus.NewDesc("tsuru_service_instance_metadata", "tsuru service instance metadata.", labelsService, nil)
+	serviceInstanceBindDesc     = prometheus.NewDesc("tsuru_service_instance_bind", "tsuru service instance bind.", serviceBindLabels, nil)
 )
 
 type teamsCollector struct {
@@ -127,6 +129,12 @@ func (p *teamsCollector) Collect(ch chan<- prometheus.Metric) {
 	}
 	for _, si := range p.serviceInstances {
 		ch <- prometheus.MustNewConstMetric(serviceInstanceMetadataDesc, prometheus.GaugeValue, 1.0, si.ServiceName, si.Name, si.TeamOwner, si.Pool, si.PlanName)
+	}
+
+	for _, si := range p.serviceInstances {
+		for _, app := range si.Apps {
+			ch <- prometheus.MustNewConstMetric(serviceInstanceBindDesc, prometheus.GaugeValue, 1.0, si.ServiceName, si.Name, app)
+		}
 	}
 
 	for _, a := range p.apps {
