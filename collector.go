@@ -18,10 +18,12 @@ var (
 	labelsApp         = []string{"app"}
 	labelsAppMetadata = []string{"app", "team_owner", "pool", "plan"}
 	labelsAppAddress  = []string{"app", "router", "address"}
+	labelsAppCName    = []string{"app", "cname"}
 	labelsService     = []string{"service", "service_instance", "team_owner", "pool", "plan"}
 	serviceBindLabels = []string{"service", "service_instance", "app"}
 	appMetadataDesc   = prometheus.NewDesc("tsuru_app_metadata", "tsuru app metadata.", labelsAppMetadata, nil)
 	appAddressesDesc  = prometheus.NewDesc("tsuru_app_address", "tsuru app address.", labelsAppAddress, nil)
+	appCNameDesc      = prometheus.NewDesc("tsuru_app_cname", "tsuru app cnames.", labelsAppCName, nil)
 	appUnitsDesc      = prometheus.NewDesc("tsuru_app_units_total", "tsuru app units.", labelsApp, nil)
 
 	serviceInstanceMetadataDesc = prometheus.NewDesc("tsuru_service_instance_metadata", "tsuru service instance metadata.", labelsService, nil)
@@ -106,6 +108,7 @@ func (p *teamsCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- appAddressesDesc
 	ch <- serviceInstanceMetadataDesc
 	ch <- appUnitsDesc
+	ch <- appCNameDesc
 }
 
 func (p *teamsCollector) Collect(ch chan<- prometheus.Metric) {
@@ -141,10 +144,28 @@ func (p *teamsCollector) Collect(ch chan<- prometheus.Metric) {
 		nUnits := len(a.Units)
 		ch <- prometheus.MustNewConstMetric(appUnitsDesc, prometheus.GaugeValue, float64(nUnits), a.Name)
 	}
+
+	cnameAlreadySent := map[sentAppCName]bool{}
+
+	for _, a := range p.apps {
+		for _, cname := range a.Cname {
+			key := sentAppCName{a.Name, cname}
+			if cnameAlreadySent[key] {
+				continue
+			}
+			ch <- prometheus.MustNewConstMetric(appCNameDesc, prometheus.GaugeValue, float64(1), a.Name, cname)
+			cnameAlreadySent[key] = true
+		}
+	}
 }
 
 type sentRouterAddress struct {
 	app     string
 	router  string
 	address string
+}
+
+type sentAppCName struct {
+	app   string
+	cname string
 }
