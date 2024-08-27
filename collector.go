@@ -15,16 +15,17 @@ const (
 )
 
 var (
-	labelsApp         = []string{"app"}
 	labelsAppMetadata = []string{"app", "team_owner", "pool", "plan"}
 	labelsAppAddress  = []string{"app", "router", "address"}
 	labelsAppCName    = []string{"app", "cname"}
+	labelsAppUnits    = []string{"app", "process"}
+
 	labelsService     = []string{"service", "service_instance", "team_owner", "pool", "plan"}
 	serviceBindLabels = []string{"service", "service_instance", "app"}
 	appMetadataDesc   = prometheus.NewDesc("tsuru_app_metadata", "tsuru app metadata.", labelsAppMetadata, nil)
 	appAddressesDesc  = prometheus.NewDesc("tsuru_app_address", "tsuru app address.", labelsAppAddress, nil)
 	appCNameDesc      = prometheus.NewDesc("tsuru_app_cname", "tsuru app cnames.", labelsAppCName, nil)
-	appUnitsDesc      = prometheus.NewDesc("tsuru_app_units_total", "tsuru app units.", labelsApp, nil)
+	appUnitsDesc      = prometheus.NewDesc("tsuru_app_units_total", "tsuru app units.", labelsAppUnits, nil)
 
 	serviceInstanceMetadataDesc = prometheus.NewDesc("tsuru_service_instance_metadata", "tsuru service instance metadata.", labelsService, nil)
 	serviceInstanceBindDesc     = prometheus.NewDesc("tsuru_service_instance_bind", "tsuru service instance bind.", serviceBindLabels, nil)
@@ -141,8 +142,14 @@ func (p *teamsCollector) Collect(ch chan<- prometheus.Metric) {
 	}
 
 	for _, a := range p.apps {
-		nUnits := len(a.Units)
-		ch <- prometheus.MustNewConstMetric(appUnitsDesc, prometheus.GaugeValue, float64(nUnits), a.Name)
+		unitsPerProcess := map[string]int{}
+		for _, u := range a.Units {
+			unitsPerProcess[u.Processname]++
+		}
+
+		for process, nUnits := range unitsPerProcess {
+			ch <- prometheus.MustNewConstMetric(appUnitsDesc, prometheus.GaugeValue, float64(nUnits), a.Name, process)
+		}
 	}
 
 	cnameAlreadySent := map[sentAppCName]bool{}
